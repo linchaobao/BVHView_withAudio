@@ -1504,91 +1504,6 @@ static inline void CharacterDataFree(CharacterData* data)
     }
 }
 
-// Attempt to load a new character from the given file path
-static bool CharacterDataLoadFromFile(
-    CharacterData* data,
-    const char* path,
-    char* errMsg,
-    int errMsgSize)
-{
-    printf("INFO: Loading '%s'\n", path);
-
-    if (data->count == CHARACTERS_MAX)
-    {
-        snprintf(errMsg, 512, "Error: Maximum number of BVH files loaded (%i)", CHARACTERS_MAX);
-        return false;
-    }
-
-    if (BVHDataLoad(&data->bvhData[data->count], path, errMsg, errMsgSize))
-    {
-        TransformDataResize(&data->xformData[data->count], &data->bvhData[data->count]);
-        TransformDataResize(&data->xformTmp0[data->count], &data->bvhData[data->count]);
-        TransformDataResize(&data->xformTmp1[data->count], &data->bvhData[data->count]);
-        TransformDataResize(&data->xformTmp2[data->count], &data->bvhData[data->count]);
-        TransformDataResize(&data->xformTmp3[data->count], &data->bvhData[data->count]);
-
-        snprintf(data->filePaths[data->count], 512, "%s", path);
-
-        const char* filename = path;
-        while (strchr(filename, '/')) { filename = strchr(filename, '/') + 1; }
-        while (strchr(filename, '\\')) { filename = strchr(filename, '\\') + 1; }
-
-        snprintf(data->names[data->count], 128, "%s", filename);
-        data->scales[data->count] = 1.0f;
-
-        // Auto-Scaling and unit detection
-
-        if (data->bvhData[data->count].frameCount > 0)
-        {
-            TransformDataSampleFrame(&data->xformData[data->count], &data->bvhData[data->count], 0, 1.0f);
-            TransformDataForwardKinematics(&data->xformData[data->count]);
-
-            float height = 1e-8f;
-            for (int j = 0; j < data->xformData[data->count].jointCount; j++)
-            {
-                height = Max(height, data->xformData[data->count].globalPositions[j].y);
-            }
-
-            data->scales[data->count] = height > 10.0f ? 0.01f : 1.0f;
-            data->autoScales[data->count] = 1.8 / height;
-        }
-        else
-        {
-            data->autoScales[data->count] = 1.0f;
-        }
-        
-        // Joint names combo
-
-        int comboTotalSize = 0;
-        for (int i = 0; i < data->bvhData[data->count].jointCount; i++)
-        {
-            comboTotalSize += (i > 0 ? 1 : 0) + strlen(data->bvhData[data->count].joints[i].name);
-        }
-        comboTotalSize++;
-
-        data->jointNamesCombo[data->count] = malloc(comboTotalSize);
-        data->jointNamesCombo[data->count][0] = '\0';
-        for (int i = 0; i < data->bvhData[data->count].jointCount; i++)
-        {
-            if (i > 0)
-            {
-                strcat(data->jointNamesCombo[data->count], ";");
-            }
-            strcat(data->jointNamesCombo[data->count], data->bvhData[data->count].joints[i].name);
-        }
-
-        // Done
-
-        data->count++;
-
-        return true;
-    }
-    else
-    {
-        printf("INFO: Failed to Load '%s'\n", path);
-        return false;
-    }
-}
 
 //----------------------------------------------------------------------------------
 // Geometric Functions
@@ -3753,9 +3668,7 @@ static inline void GuiScrubberSettings(
     }
 }
 
-//----------------------------------------------------------------------------------
-// Application
-//----------------------------------------------------------------------------------
+
 
 // Structure containing all of the application state which we can then pass to the Update function
 typedef struct {
@@ -3785,7 +3698,174 @@ typedef struct {
 
     char errMsg[512];
 
+    Music wavSound; //add by bao
+    bool hasWav; //add by bao
+    float wavDuration; //add by bao
+
 } ApplicationState;
+
+
+// 函数：替换字符串中的子字符串
+// You must free the result if result is non-NULL.
+char* str_replace(const char* orig, const char* rep, const char* with) {
+    char* result; // the return string
+    char* ins;    // the next insert point
+    char* tmp;    // varies
+    int len_rep;  // length of rep (the string to remove)
+    int len_with; // length of with (the string to replace rep with)
+    int len_front; // distance between rep and end of last rep
+    int count;    // number of replacements
+
+    // sanity checks and initialization
+    if (!orig || !rep)
+        return NULL;
+    len_rep = strlen(rep);
+    if (len_rep == 0)
+        return NULL; // empty rep causes infinite loop during count
+    if (!with)
+        with = "";
+    len_with = strlen(with);
+
+    // count the number of replacements needed
+    ins = orig;
+    for (count = 0; tmp = strstr(ins, rep); ++count) {
+        ins = tmp + len_rep;
+    }
+
+    tmp = result = malloc(strlen(orig) + (len_with - len_rep) * count + 1);
+
+    if (!result)
+        return NULL;
+
+    // first time through the loop, all the variable are set correctly
+    // from here on,
+    //    tmp points to the end of the result string
+    //    ins points to the next occurrence of rep in orig
+    //    orig points to the remainder of orig after "end of rep"
+    while (count--) {
+        ins = strstr(orig, rep);
+        len_front = ins - orig;
+        tmp = strncpy(tmp, orig, len_front) + len_front;
+        tmp = strcpy(tmp, with) + len_with;
+        orig += len_front + len_rep; // move to next "end of rep"
+    }
+    strcpy(tmp, orig);
+    return result;
+}
+
+
+// Attempt to load a new character from the given file path
+static bool CharacterDataLoadFromFile(
+    CharacterData* data,
+    const char* path,
+    char* errMsg,
+    int errMsgSize,
+    ApplicationState* app) // app add by bao
+{
+    printf("INFO: Loading '%s'\n", path);
+
+    if (data->count == CHARACTERS_MAX)
+    {
+        snprintf(errMsg, 512, "Error: Maximum number of BVH files loaded (%i)", CHARACTERS_MAX);
+        return false;
+    }
+
+    if (BVHDataLoad(&data->bvhData[data->count], path, errMsg, errMsgSize))
+    {
+        TransformDataResize(&data->xformData[data->count], &data->bvhData[data->count]);
+        TransformDataResize(&data->xformTmp0[data->count], &data->bvhData[data->count]);
+        TransformDataResize(&data->xformTmp1[data->count], &data->bvhData[data->count]);
+        TransformDataResize(&data->xformTmp2[data->count], &data->bvhData[data->count]);
+        TransformDataResize(&data->xformTmp3[data->count], &data->bvhData[data->count]);
+
+        snprintf(data->filePaths[data->count], 512, "%s", path);
+
+        const char* filename = path;
+        while (strchr(filename, '/')) { filename = strchr(filename, '/') + 1; }
+        while (strchr(filename, '\\')) { filename = strchr(filename, '\\') + 1; }
+
+        snprintf(data->names[data->count], 128, "%s", filename);
+        data->scales[data->count] = 1.0f;
+
+        // Auto-Scaling and unit detection
+
+        if (data->bvhData[data->count].frameCount > 0)
+        {
+            TransformDataSampleFrame(&data->xformData[data->count], &data->bvhData[data->count], 0, 1.0f);
+            TransformDataForwardKinematics(&data->xformData[data->count]);
+
+            float height = 1e-8f;
+            for (int j = 0; j < data->xformData[data->count].jointCount; j++)
+            {
+                height = Max(height, data->xformData[data->count].globalPositions[j].y);
+            }
+
+            data->scales[data->count] = height > 10.0f ? 0.01f : 1.0f;
+            data->autoScales[data->count] = 1.8 / height;
+        }
+        else
+        {
+            data->autoScales[data->count] = 1.0f;
+        }
+
+        // Joint names combo
+
+        int comboTotalSize = 0;
+        for (int i = 0; i < data->bvhData[data->count].jointCount; i++)
+        {
+            comboTotalSize += (i > 0 ? 1 : 0) + strlen(data->bvhData[data->count].joints[i].name);
+        }
+        comboTotalSize++;
+
+        data->jointNamesCombo[data->count] = malloc(comboTotalSize);
+        data->jointNamesCombo[data->count][0] = '\0';
+        for (int i = 0; i < data->bvhData[data->count].jointCount; i++)
+        {
+            if (i > 0)
+            {
+                strcat(data->jointNamesCombo[data->count], ";");
+            }
+            strcat(data->jointNamesCombo[data->count], data->bvhData[data->count].joints[i].name);
+        }
+
+        // Done
+
+        data->count++;
+
+        // add by bao, try to load wav file
+        char* wavFileName = str_replace(path, ".bvh", ".wav"); //TODO: case not sensitive
+        if (wavFileName)
+        {
+            printf("INFO: BAO filename '%s'\n", wavFileName);
+            if (FileExists(wavFileName))
+            {
+                printf("INFO: BAO file exist: filename '%s'\n", wavFileName);
+
+                app->wavSound = LoadMusicStream(wavFileName);
+
+                app->hasWav = true;
+                app->wavDuration = GetMusicTimeLength(app->wavSound);
+
+                printf("INFO: BAO music length '%f'\n", app->wavDuration);
+
+                PlayMusicStream(app->wavSound);
+            }
+
+            free(wavFileName);
+        }
+
+        return true;
+    }
+    else
+    {
+        printf("INFO: Failed to Load '%s'\n", path);
+        return false;
+    }
+}
+
+//----------------------------------------------------------------------------------
+// Application
+//----------------------------------------------------------------------------------
 
 // Update function - what is called to "tick" the application.
 static void ApplicationUpdate(void* voidApplicationState)
@@ -3801,7 +3881,7 @@ static void ApplicationUpdate(void* voidApplicationState)
             char fileNameToLoad[512];
             snprintf(fileNameToLoad, 512, "%s/%s", app->fileDialogState.dirPathText, app->fileDialogState.fileNameText);
 
-            if (CharacterDataLoadFromFile(&app->characterData, fileNameToLoad, app->errMsg, 512))
+            if (CharacterDataLoadFromFile(&app->characterData, fileNameToLoad, app->errMsg, 512, app))
             {
                 app->characterData.active = app->characterData.count - 1;
 
@@ -3832,7 +3912,7 @@ static void ApplicationUpdate(void* voidApplicationState)
 
         for (int i = 0; i < droppedFiles.count; i++)
         {
-            if (CharacterDataLoadFromFile(&app->characterData, droppedFiles.paths[i], app->errMsg, 512))
+            if (CharacterDataLoadFromFile(&app->characterData, droppedFiles.paths[i], app->errMsg, 512, app))
             {
                 app->characterData.active = app->characterData.count - 1;
             }
@@ -4354,6 +4434,29 @@ static void ApplicationUpdate(void* voidApplicationState)
 
     // Done
 
+    // add by bao, play sound
+    if (app->hasWav)
+    {
+        // 更新播放时间
+        float playTime = app->scrubberSettings.playTime; // 当前帧的时间
+
+        //printf("INFO: BAO scrubbersettings '%f'\n", playTime);
+
+        // 如果播放时间超过声音的总时长，重置播放时间
+        if (playTime > app->wavDuration) {
+            playTime = 0.0f;
+        }
+
+        //UpdateMusicStream(app->music);   // Update music buffer with new stream data
+        // 播放声音并设置播放时间
+        //PlaySound(app->wavSound);
+        //SetSoundTimePlayed(app->wavSound, playTime);
+
+        UpdateMusicStream(app->wavSound);   // Update music buffer with new stream data
+        SeekMusicStream(app->wavSound, playTime);
+        //PlayMusicStream(app->wavSound);
+    }
+
     EndDrawing();
 }
 
@@ -4373,12 +4476,19 @@ int main(int argc, char** argv)
     app.argv = argv;    
     app.screenWidth = ArgInt(argc, argv, "screenWidth", 1280);
     app.screenHeight = ArgInt(argc, argv, "screenHeight", 720);
+    app.hasWav = false; //add by bao
+    app.wavDuration = 0.f; //add by bao
     
     // Init Window
 
     SetConfigFlags(FLAG_VSYNC_HINT);
     SetConfigFlags(FLAG_MSAA_4X_HINT);
     InitWindow(app.screenWidth, app.screenHeight, "BVHView");
+
+
+    InitAudioDevice();              // Initialize audio device, add by bao
+
+
     SetTargetFPS(60);
 
     // Camera
@@ -4430,7 +4540,7 @@ int main(int argc, char** argv)
     {
         if (argv[i][0] == '-') { continue; }
 
-        CharacterDataLoadFromFile(&app.characterData, argv[i], app.errMsg, 512);
+        CharacterDataLoadFromFile(&app.characterData, argv[i], app.errMsg, 512, &app);
     }
 
     // If any characters loaded, update capsules and scrubber
@@ -4458,6 +4568,14 @@ int main(int argc, char** argv)
         ApplicationUpdate(&app);
     }
 #endif
+
+
+    // De-Initialization, addy by bao
+    //--------------------------------------------------------------------------------------
+    UnloadMusicStream(app.wavSound);   // Unload music stream buffers from RAM
+
+    CloseAudioDevice();         // Close audio device (music streaming is automatically stopped
+    //--------------------------------------------------------------------------------------
 
     // Unload and finish
 
