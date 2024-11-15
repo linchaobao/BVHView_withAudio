@@ -2,6 +2,8 @@
 
 BVHView is a simple [.bvh animation file format](https://research.cs.wisc.edu/graphics/Courses/cs-838-1999/Jeff/BVH.html) viewer built using [raylib](https://www.raylib.com/).
 
+Add by bao: it will load and play a ".wav" file with the same filename as the input ".bvh" file (only with different file extensions). 
+
 
 
 https://github.com/orangeduck/BVHView/assets/177299/9f976284-02c1-4a14-bca4-b8b3d7c9a774
@@ -45,3 +47,4 @@ To build a release version with optimizations enabled run `make BUILD_MODE=RELEA
 ## Other
 
 For other platforms you should be able to build BVHView by hacking the `Makefile` a bit. Contributions here welcome.
+
