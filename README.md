@@ -10,7 +10,7 @@ https://github.com/orangeduck/BVHView/assets/177299/9f976284-02c1-4a14-bca4-b8b3
 
 
 
-* [Download (Windows)](https://theorangeduck.com/media/uploads/BVHView/bvhview.zip)
+* [Download (Windows)](https://github.com/linchaobao/BVHView_withAudio/blob/main/bvhview.exe)
 * [Project Page](https://theorangeduck.com/page/bvhview)
 * [Web Demo](https://theorangeduck.com/media/uploads/BVHView/bvhview.html)
 
