@@ -1,0 +1,1 @@
+Compiled from https://github.com/raysan5/raygui/tree/master/projects/VS2022 with Visual Studio 2019. 
